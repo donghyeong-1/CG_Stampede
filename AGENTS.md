@@ -8,7 +8,10 @@
 - 프로젝트명: STAMPEDE
 - 과목: 컴퓨터그래픽스 (2학년 2학기) 최종 프로젝트
 - 기획 문서: `컴퓨터그래픽스_최종프로젝트_제안서.docx`
-- 기술 스택 / 실행 방법: (결정되면 여기에 기록)
+- 기술 스택: C++17, OpenGL 3.3 Core, GLFW 3.4, GLEW 2.2.0, GLM 1.0.3 (모두 `third_party/`에 동봉). 수업 실습 14~24 틀 기반. 자세한 구성은 `plan.md` 2·3장.
+- 빌드: `Stampede.sln`을 Visual Studio(2022 이상)에서 열고 x64 Debug/Release 빌드(F5). 또는 `MSBuild Stampede.sln /p:Configuration=Release /p:Platform=x64`.
+- 실행: `bin/<구성>/Stampede.exe` (셰이더·텍스처·`glew32.dll`은 빌드 후 자동 복사). 소스는 `src/**` 아래에 추가하면 자동 포함된다.
+- 조작: Enter/시작 클릭=시작, A/D=조향, 마우스=조준, 좌클릭=점프(미구현), Space=능력(미구현), R=재시작, Q/Esc=종료, K=디버그 체력 감소.
 
 ## 언어 및 코딩 규칙
 
