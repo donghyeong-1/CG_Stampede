@@ -1,6 +1,8 @@
-bin/
-build/
+/bin/
+/build/
 .vs/
 *.user
 *.log
 *.ppm
+*.bmp
+!assets/textures/*.bmp

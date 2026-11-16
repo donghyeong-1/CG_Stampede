@@ -1,6 +1,5 @@
-// [장수현] 타이틀·HUD·결과 화면과 버튼 배치. 글자 출력은 아직 없다(창 제목으로 임시 표시).
-// 버튼 배치는 프레임버퍼 크기 비율 기준이며, 그리기와 클릭 판정이 같은 함수(ButtonRect)를 쓴다.
-// TODO(장수현): 비트맵 폰트 글자 출력, 체력/능력 아이콘, 반투명 조준 표시 다듬기.
+// 타이틀·HUD·결과 화면과 버튼 배치. 글자는 Renderer::DrawLabel(한글 가능)로 그린다.
+// 배치와 글자 크기는 프레임버퍼 높이 비율 기준이며, 버튼은 그리기와 클릭 판정이 같은 함수(ButtonRect)를 쓴다.
 #pragma once
 #include "core/GameState.h"
 #include "render/Renderer.h"
