@@ -14,3 +14,11 @@ void DrawRockWall(Renderer &renderer, const Obstacle &obstacle, float time);
 void DrawCrackPit(Renderer &renderer, const Obstacle &obstacle, float halfWidth);
 void DrawExitMarker(Renderer &renderer, float z, float halfWidth);
 void DrawCanyonWalls(Renderer &renderer, float halfWidth, float zStart, float zEnd);
+
+// 절벽 턱 위의 불타는 나무 위치. DrawCanyonWalls가 그리는 그을린 나무와 같은 자리이며, 불꽃 입자를 여기서 낸다.
+struct FireSpot
+{
+    glm::vec3 position{0}; // 불꽃이 시작되는 높이(나무 중간).
+    float scale = 1.0f;
+};
+std::vector<FireSpot> CanyonFireSpots(float halfWidth, float zStart, float zEnd);

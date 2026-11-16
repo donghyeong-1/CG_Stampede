@@ -13,7 +13,7 @@
 - 실행: `bin/<구성>/Stampede.exe` (셰이더·텍스처·`glew32.dll`은 빌드 후 자동 복사). 소스는 `src/**` 아래에 추가하면 자동 포함된다.
 - 조작: Enter/시작 클릭=시작, A/D=조향, 마우스=조준, 좌클릭=조준한 동물로 점프, Space=능력(가젤 도약/들소 돌진), R=재시작, Q/Esc=종료, K=디버그 피해.
 - 검증: `bin/Release/Stampede.exe --selftest`(창 없이 규칙 검증, 실패 수가 종료 코드). 화면 확인은 `--autoplay --shot <초> <파일.bmp> --exit-after <초>`. **규칙·수치·배치를 바꾸면 selftest를 통과시킨 뒤 커밋한다.**
-- 구조: 규칙은 `src/logic/Simulation.cpp`(OpenGL 호출 금지), 배치는 `src/logic/Stage.cpp`, 수치는 `src/core/Config.h`, 화면은 `src/render`·`src/model`·`src/ui`.
+- 구조: 규칙은 `src/logic/Simulation.cpp`(OpenGL 호출 금지), 배치는 `src/logic/Stage.cpp`, 수치는 `src/core/Config.h`, 화면은 `src/render`·`src/model`·`src/ui`, 입자 효과(불·먼지)는 `src/fx`.
 
 ## 언어 및 코딩 규칙
 

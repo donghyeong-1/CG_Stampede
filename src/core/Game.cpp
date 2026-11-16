@@ -6,11 +6,19 @@
 #include "model/Models.h"
 #include "ui/Hud.h"
 
+namespace
+{
+// 바닥·절벽을 그리는 z 범위. 불 위치 계산도 같은 범위를 쓴다.
+const float WORLD_Z_START = -30.0f;
+const float WORLD_Z_END = cfg::STAGE_LENGTH + 40.0f;
+} // namespace
+
 bool Game::Init(GLFWwindow *w)
 {
     window = w;
     if (!renderer.Init()) { return false; }
     glfwGetFramebufferSize(window, &state.framebufferWidth, &state.framebufferHeight);
+    fireSpots = CanyonFireSpots(cfg::CANYON_HALF_WIDTH, WORLD_Z_START, WORLD_Z_END);
     BuildStage(state); // 타이틀 뒤에 보일 장면을 미리 구성.
     camera.Reset(CameraTarget());
     state.mode = GameMode::Title;
@@ -32,6 +40,7 @@ void Game::Frame(float dt)
         AutoPlayStep(state);
     }
     if (state.mode == GameMode::Playing) { UpdatePlaying(dt); }
+    UpdateEffects(dt);
     Draw();
     UpdateWindowTitle();
 }
@@ -114,7 +123,26 @@ glm::vec3 Game::CameraTarget() const
 
 void Game::UpdatePlaying(float dt)
 {
+    // 규칙을 한 단계 진행하고, 그 사이에 일어난 일(착지·도약 끝·바위 파괴)에 먼지를 터뜨린다.
+    const int mountedBefore = state.player.mountedAnimalId;
+    const bool abilityBefore = state.player.abilityActive;
+    int brokenBefore = 0, brokenAfter = 0;
+    for (const Obstacle &obstacle : state.obstacles) { brokenBefore += obstacle.consumed ? 1 : 0; }
+
     StepSimulation(state, dt);
+
+    const Animal *mount = FindAnimal(state, state.player.mountedAnimalId);
+    if (mount && mountedBefore < 0) { effects.BurstDust(mount->position, 14, 0.8f); } // 점프 착지.
+    if (mount && abilityBefore && !state.player.abilityActive && mount->type == AnimalType::Gazelle)
+    {
+        effects.BurstDust(mount->position, 18, 1.0f); // 가젤 도약 착지.
+    }
+    for (const Obstacle &obstacle : state.obstacles) { brokenAfter += obstacle.consumed ? 1 : 0; }
+    if (brokenAfter > brokenBefore && mount)
+    {
+        effects.BurstDust(mount->position + glm::vec3(0.0f, 0.0f, 1.5f), 70, 1.8f); // 바위 파괴.
+    }
+
     camera.Follow(CameraTarget(), dt);
 
     // 마우스 조준: 점프할 수 있을 때만 대상을 고른다.
@@ -124,6 +152,32 @@ void Game::UpdatePlaying(float dt)
         Ray ray = camera.ScreenRay(state.mouseX, state.mouseY, state.framebufferWidth, state.framebufferHeight);
         state.hoveredAnimalId = PickAnimal(state, ray);
     }
+}
+
+void Game::UpdateEffects(float dt)
+{
+    // 산불: 화면에 들어올 만한 범위의 나무에서만 불꽃·연기를 낸다. 타이틀·결과 화면에서도 계속 탄다.
+    glm::vec3 focus = CameraTarget();
+    for (const FireSpot &spot : fireSpots)
+    {
+        if (spot.position.z < focus.z - 14.0f || spot.position.z > focus.z + 48.0f) { continue; }
+        effects.EmitFire(spot.position, spot.scale, dt);
+    }
+    effects.EmitEmbers(focus, dt);
+
+    // 흙먼지: 땅을 딛고 달리는 동물의 뒷발 쪽에서 피어오른다. 능력으로 빨라진 동물은 더 많이.
+    if (state.mode == GameMode::Playing)
+    {
+        for (const Animal &animal : state.animals)
+        {
+            if (animal.waiting || std::abs(animal.yOffset) > 0.05f) { continue; }
+            if (animal.position.z < focus.z - 14.0f || animal.position.z > focus.z + 48.0f) { continue; }
+            bool boosted = state.player.abilityActive && animal.id == state.player.mountedAnimalId;
+            float rate = (animal.type == AnimalType::Bison ? 22.0f : 14.0f) * (boosted ? 4.0f : 1.0f);
+            effects.EmitDust(animal.position - glm::vec3(0.0f, 0.0f, animal.halfSize.z * 0.8f), rate, dt);
+        }
+    }
+    effects.Update(dt);
 }
 
 // ── 그리기 ──
@@ -136,7 +190,7 @@ void Game::Draw()
 
     // 바닥: 균열 자리를 비우고 조각으로 나눠 그린다. 절벽 안쪽 면이 들쭉날쭉하므로 조금 넓게 깐다.
     const float floorHalfWidth = cfg::CANYON_HALF_WIDTH + 0.7f;
-    const float zStart = -30.0f, zEnd = cfg::STAGE_LENGTH + 40.0f;
+    const float zStart = WORLD_Z_START, zEnd = WORLD_Z_END;
     float z = zStart;
     for (const Obstacle &obstacle : state.obstacles)
     {
@@ -164,6 +218,8 @@ void Game::Draw()
     {
         DrawMonkey(renderer, player.position, elapsed, player.isJumping);
     }
+
+    effects.Draw(renderer); // 반투명 입자는 불투명한 물체를 모두 그린 뒤에.
 
     renderer.BeginUi(state.framebufferWidth, state.framebufferHeight);
     if (state.mode == GameMode::Title) { DrawTitle(renderer, state); }

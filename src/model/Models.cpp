@@ -180,27 +180,92 @@ void DrawExitMarker(Renderer &renderer, float z, float halfWidth)
     renderer.DrawGlowCube(IDENTITY, {0, 0.02f, z}, {halfWidth * 2, 0.04f, 0.4f}, {0.85f, 1.0f, 0.85f}); // 결승선.
 }
 
+namespace
+{
+const float WALL_STEP = 5.0f;
+
+// 절벽 한 덩어리의 모양. 그리기와 불 위치 계산이 같은 값을 쓰도록 한곳에서 만든다.
+struct WallBlock
+{
+    float side, inner, height, upper, z, tone;
+    bool burning;
+    float treeZ, treeHeight;
+};
+
+WallBlock MakeWallBlock(int index, int sideIndex, float halfWidth, float zStart)
+{
+    int seed = index * 2 + sideIndex;
+    WallBlock block;
+    block.side = sideIndex == 0 ? -1.0f : 1.0f;
+    block.inner = halfWidth + Hash(seed) * 0.6f; // 절벽 안쪽 면의 |x|.
+    block.height = 2.2f + Hash(seed + 300) * 1.6f;
+    block.upper = 1.0f + Hash(seed + 900) * 1.6f; // 뒤로 물러난 위층. 카메라(높이 약 9m)를 가리지 않게 낮게 둔다.
+    block.z = zStart + static_cast<float>(index) * WALL_STEP;
+    block.tone = 0.9f + Hash(seed + 600) * 0.25f;
+    block.burning = Hash(seed + 1200) > 0.3f; // 열 중 일곱 곳쯤에 불타는 나무.
+    block.treeZ = block.z + WALL_STEP * (0.25f + Hash(seed + 1500) * 0.5f);
+    block.treeHeight = 1.1f + Hash(seed + 1800) * 0.9f;
+    return block;
+}
+
+// 아래층 위, 위층 앞의 턱(폭 1.2m) 가운데.
+glm::vec3 TreeBase(const WallBlock &block) { return {block.side * (block.inner + 0.6f), block.height, block.treeZ}; }
+
+void DrawBurntTree(Renderer &renderer, const WallBlock &block, int seed)
+{
+    const glm::vec3 charred(0.1f, 0.07f, 0.06f), ember(1.0f, 0.45f, 0.1f);
+    glm::mat4 base = glm::translate(IDENTITY, TreeBase(block));
+    float h = block.treeHeight;
+    renderer.DrawCube(base, {0, h * 0.5f, 0}, {0.2f, h, 0.2f}, charred); // 줄기.
+    for (int i = 0; i < 3; ++i) // 비스듬히 뻗은 가지.
+    {
+        float yaw = Hash(seed + i * 7) * 360.0f, tilt = 35.0f + Hash(seed + i * 11) * 30.0f;
+        float length = h * (0.35f + Hash(seed + i * 13) * 0.3f);
+        glm::mat4 turned = Joint(base, {0, h * (0.45f + 0.2f * static_cast<float>(i)), 0}, yaw, {0, 1, 0});
+        glm::mat4 branch = Joint(turned, {0, 0, 0}, tilt, {1, 0, 0});
+        renderer.DrawCube(branch, {0, length * 0.5f, 0}, {0.1f, length, 0.1f}, charred);
+    }
+    renderer.DrawGlowCube(base, {0, 0.12f, 0}, {0.5f, 0.24f, 0.5f}, ember); // 밑동의 달아오른 숯불.
+}
+} // namespace
+
 void DrawCanyonWalls(Renderer &renderer, float halfWidth, float zStart, float zEnd)
 {
     // 크기·색이 조금씩 다른 암석 덩어리를 두 층으로 쌓아 절벽을 만든다. 안쪽 면은 바닥 가장자리 밖에 둔다.
-    const float step = 5.0f;
-    int index = 0;
-    for (float z = zStart; z < zEnd; z += step, ++index)
+    const float depth = 4.0f;
+    int count = static_cast<int>(std::ceil((zEnd - zStart) / WALL_STEP));
+    for (int index = 0; index < count; ++index)
     {
         for (int sideIndex = 0; sideIndex < 2; ++sideIndex)
         {
-            float side = sideIndex == 0 ? -1.0f : 1.0f;
-            int seed = index * 2 + sideIndex;
-            float inset = Hash(seed) * 0.6f, height = 2.2f + Hash(seed + 300) * 1.6f, depth = 4.0f;
-            float tone = 0.9f + Hash(seed + 600) * 0.25f;
-            glm::vec3 color = glm::vec3(0.56f, 0.32f, 0.21f) * tone;
-            float inner = halfWidth + inset; // 절벽 안쪽 면의 |x|.
+            WallBlock block = MakeWallBlock(index, sideIndex, halfWidth, zStart);
+            glm::vec3 color = glm::vec3(0.56f, 0.32f, 0.21f) * block.tone;
+            float centerZ = block.z + WALL_STEP * 0.5f;
             // 아래쪽은 균열 깊이까지 내려가 구덩이의 옆면이 된다.
-            renderer.DrawCube(IDENTITY, {side * (inner + depth * 0.5f), (height - 5.0f) * 0.5f, z + step * 0.5f},
-                              {depth, height + 5.0f, step}, color);
-            float upper = 1.0f + Hash(seed + 900) * 1.6f; // 뒤로 물러난 위층. 카메라(높이 약 9m)를 가리지 않게 낮게 둔다.
-            renderer.DrawCube(IDENTITY, {side * (inner + 1.2f + depth * 0.5f), height + upper * 0.5f, z + step * 0.5f},
-                              {depth, upper, step}, color * 0.9f);
+            renderer.DrawCube(IDENTITY, {block.side * (block.inner + depth * 0.5f), (block.height - 5.0f) * 0.5f, centerZ},
+                              {depth, block.height + 5.0f, WALL_STEP}, color);
+            renderer.DrawCube(IDENTITY, {block.side * (block.inner + 1.2f + depth * 0.5f), block.height + block.upper * 0.5f, centerZ},
+                              {depth, block.upper, WALL_STEP}, color * 0.9f);
+            if (block.burning) { DrawBurntTree(renderer, block, index * 2 + sideIndex + 2000); }
         }
     }
+}
+
+std::vector<FireSpot> CanyonFireSpots(float halfWidth, float zStart, float zEnd)
+{
+    std::vector<FireSpot> spots;
+    int count = static_cast<int>(std::ceil((zEnd - zStart) / WALL_STEP));
+    for (int index = 0; index < count; ++index)
+    {
+        for (int sideIndex = 0; sideIndex < 2; ++sideIndex)
+        {
+            WallBlock block = MakeWallBlock(index, sideIndex, halfWidth, zStart);
+            if (!block.burning) { continue; }
+            FireSpot spot;
+            spot.position = TreeBase(block) + glm::vec3(0.0f, block.treeHeight * 0.45f, 0.0f);
+            spot.scale = 0.8f + block.treeHeight * 0.35f;
+            spots.push_back(spot);
+        }
+    }
+    return spots;
 }

@@ -4,7 +4,9 @@
 // 규칙 자체(점프·능력·충돌)는 logic/Simulation에 있고, 여기서는 입력과 화면만 연결한다.
 #pragma once
 #include "core/GameState.h"
+#include "fx/Particles.h"
 #include "logic/Camera.h"
+#include "model/Models.h"
 #include "render/Renderer.h"
 
 class Game
@@ -29,6 +31,7 @@ private:
     void StartGame();       // 모든 상태를 초기화하고 Playing으로 전환(재시작 포함).
     void PollInput();       // A/D 조향처럼 누르고 있는 키.
     void UpdatePlaying(float dt);
+    void UpdateEffects(float dt); // 불꽃·연기·불티·흙먼지 입자.
     glm::vec3 CameraTarget() const;
     void Draw();
     void UpdateWindowTitle();
@@ -37,6 +40,8 @@ private:
     GameState state;
     Camera camera;
     Renderer renderer;
+    ParticleSystem effects;
+    std::vector<FireSpot> fireSpots;
     std::string lastTitle;
     bool autoPlay = false;
     float elapsed = 0.0f; // 실행 후 지난 시간(초).
