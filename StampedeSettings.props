@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 실습3-9/PracticeSettings.props 를 기반으로 한 Stampede 공통 빌드 설정.
+     third_party의 GLFW(/MD 정적 라이브러리)에 맞춰 런타임은 /MD(MultiThreadedDLL)를 쓴다. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <StampedeRoot>$(MSBuildThisFileDirectory)</StampedeRoot>
+    <OutDir>$(StampedeRoot)bin\$(Configuration)\</OutDir>
+    <IntDir>$(StampedeRoot)build\$(Configuration)\</IntDir>
+    <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <AdditionalOptions>/utf-8 /FC %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(StampedeRoot)src;$(StampedeRoot)third_party\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- 동봉 라이브러리 헤더의 경고는 숨기고 우리 코드 경고만 본다. -->
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <TreatAngleBracketIncludeAsExternal>true</TreatAngleBracketIncludeAsExternal>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(StampedeRoot)third_party\lib\x64\glew32.lib;$(StampedeRoot)third_party\lib\x64\glfw3.lib;opengl32.lib;user32.lib;gdi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <Target Name="CheckBundledDependencies" BeforeTargets="ClCompile">
+    <Error Condition="!Exists('$(StampedeRoot)third_party\include\glm\glm.hpp')" Text="GLM 헤더가 없습니다: third_party 폴더 전체를 받아야 합니다."/>
+    <Error Condition="!Exists('$(StampedeRoot)third_party\include\GL\glew.h')" Text="GLEW 헤더가 third_party/include/GL에 없습니다."/>
+    <Error Condition="!Exists('$(StampedeRoot)third_party\lib\x64\glfw3.lib')" Text="GLFW 라이브러리가 third_party/lib/x64에 없습니다."/>
+  </Target>
+  <!-- 빌드 후 실행 폴더로 셰이더·텍스처·GLEW DLL을 복사한다. 실행 파일 옆에서 리소스를 찾는다(AssetPath). -->
+  <Target Name="CopyRuntimeAssets" AfterTargets="Build">
+    <ItemGroup>
+      <RuntimeShaders Include="$(StampedeRoot)shaders\*.*"/>
+      <RuntimeTextures Include="$(StampedeRoot)assets\textures\**\*.*"/>
+    </ItemGroup>
+    <Copy SourceFiles="@(RuntimeShaders)" DestinationFolder="$(OutDir)shaders" SkipUnchangedFiles="true"/>
+    <Copy SourceFiles="@(RuntimeTextures)" DestinationFiles="@(RuntimeTextures->'$(OutDir)assets\textures\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true"/>
+    <Copy SourceFiles="$(StampedeRoot)third_party\bin\x64\glew32.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"/>
+  </Target>
+</Project>
