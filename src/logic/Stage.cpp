@@ -106,6 +106,16 @@ void BuildStage(GameState &state)
         state.obstacles.push_back(obstacle);
     }
 
+    // 불붙은 통나무: 기다리는 동물 자리와 복귀 지점(x=0, 장애물 뒤 3m)을 피해 놓는다.
+    state.hazards.clear();
+    const float logs[][2]{{0.3f, 14.0f}, {-2.3f, 20.0f}, {2.4f, 31.5f}, {-2.4f, 50.5f}, {-2.4f, 71.0f}, {0.0f, 96.0f}};
+    for (const auto &log : logs)
+    {
+        Hazard hazard;
+        hazard.position = {log[0], 0.0f, log[1]};
+        state.hazards.push_back(hazard);
+    }
+
     state.player = PlayerState{};
     SpawnHerd(state, 0);
 }

@@ -5,7 +5,6 @@ bool Renderer::Init()
 {
     if (!phong.Load("shaders/phong.vert", "shaders/phong.frag")) { return false; }
     if (!ui.Load("shaders/ui.vert", "shaders/ui.frag")) { return false; }
-    if (!particle.Load("shaders/particle.vert", "shaders/particle.frag")) { return false; }
     cube.Create(MakeCubeVertices());
     floorPlane.Create(MakeFloorVertices());
     quad.Create(MakeQuadVertices());
@@ -24,7 +23,6 @@ void Renderer::Shutdown()
     textCache.Destroy();
     phong.Destroy();
     ui.Destroy();
-    particle.Destroy();
 }
 
 void Renderer::BeginScene(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec3 &eye,
@@ -40,13 +38,8 @@ void Renderer::BeginScene(const glm::mat4 &view, const glm::mat4 &projection, co
     glClearColor(sky.r, sky.g, sky.b, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // 뷰 행렬 회전 부분의 행이 카메라의 오른쪽·위쪽 방향(월드)이다. 빌보드에 쓴다.
-    sceneViewProj = projection * view;
-    cameraRight = glm::vec3(view[0][0], view[1][0], view[2][0]);
-    cameraUp = glm::vec3(view[0][1], view[1][1], view[2][1]);
-
     phong.Use();
-    phong.SetMat4("uViewProj", sceneViewProj);
+    phong.SetMat4("uViewProj", projection * view);
     phong.SetVec3("uViewPos", eye);
     phong.SetVec3("uLightDir", light.directionToLight);
     phong.SetVec3("uLightColor", light.color);
@@ -101,35 +94,6 @@ void Renderer::DrawFloor(float halfWidth, float zStart, float zEnd, float tileMe
     glBindTexture(GL_TEXTURE_2D, floorTexture);
     floorPlane.Draw();
     phong.SetVec2("uUvOffset", glm::vec2(0.0f));
-}
-
-void Renderer::BeginParticles(bool additive)
-{
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE); // 깊이 검사는 하되 기록하지 않는다: 입자끼리 서로 가리지 않고 겹쳐 보인다.
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, additive ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
-    particle.Use();
-    particle.SetMat4("uViewProj", sceneViewProj);
-    particle.SetVec3("uCameraRight", cameraRight);
-    particle.SetVec3("uCameraUp", cameraUp);
-}
-
-void Renderer::DrawParticle(const glm::vec3 &center, float size, const glm::vec4 &rgba)
-{
-    particle.SetVec3("uCenter", center);
-    particle.SetFloat("uSize", size);
-    particle.SetVec4("uColor", rgba);
-    quad.Draw();
-}
-
-void Renderer::EndParticles()
-{
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-    glEnable(GL_CULL_FACE);
-    phong.Use(); // 이후 월드 그리기가 이어져도 되도록 되돌린다.
 }
 
 void Renderer::BeginUi(int framebufferWidth, int framebufferHeight)

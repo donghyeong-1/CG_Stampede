@@ -25,7 +25,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(StampedeRoot)third_party\lib\x64\glew32.lib;$(StampedeRoot)third_party\lib\x64\glfw3.lib;opengl32.lib;user32.lib;gdi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(StampedeRoot)third_party\lib\x64\glew32.lib;$(StampedeRoot)third_party\lib\x64\glfw3.lib;opengl32.lib;winmm.lib;user32.lib;gdi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Target Name="CheckBundledDependencies" BeforeTargets="ClCompile">

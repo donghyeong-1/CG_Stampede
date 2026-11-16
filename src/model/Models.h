@@ -12,6 +12,8 @@ void DrawMonkey(Renderer &renderer, const glm::vec3 &position, float time, bool 
 void DrawRockWall(Renderer &renderer, const Obstacle &obstacle, float time);
 // 균열: 바닥이 끊긴 자리의 절벽 면과 아래쪽 불빛.
 void DrawCrackPit(Renderer &renderer, const Obstacle &obstacle, float halfWidth);
+// 불붙은 통나무(조향으로 피하는 장애물). time으로 숯불이 일렁인다.
+void DrawBurningLog(Renderer &renderer, const Hazard &hazard, float time);
 void DrawExitMarker(Renderer &renderer, float z, float halfWidth);
 void DrawCanyonWalls(Renderer &renderer, float halfWidth, float zStart, float zEnd);
 

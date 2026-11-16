@@ -7,11 +7,17 @@
 void AutoPlayStep(GameState &state)
 {
     PlayerState &player = state.player;
-    if (state.mode != GameMode::Playing || player.isJumping || player.respawnTimer > 0.0f) { return; }
+    if (state.mode != GameMode::Playing) { return; }
+    player.steerInput = 0.0f;
+    if (player.isJumping || player.respawnTimer > 0.0f) { return; }
     const Animal *mount = FindAnimal(state, player.mountedAnimalId);
-    const Obstacle *next = NextObstacle(state);
-    if (!mount || !next) { return; }
+    if (!mount) { return; }
 
+    // 조향: 앞쪽 통나무를 피한다. x 이동 = steerInput × STEER_RIGHT_SIGN 이므로 부호를 맞춘다.
+    player.steerInput = DodgeDirection(state, *mount, 8.0f) * cfg::STEER_RIGHT_SIGN;
+
+    const Obstacle *next = NextObstacle(state);
+    if (!next) { return; }
     AnimalType needed = next->type == ObstacleType::Crack ? AnimalType::Gazelle : AnimalType::Bison;
     if (mount->type != needed)
     {
@@ -111,7 +117,7 @@ void TestNoInputFails()
         }
     }
     Check(state.mode == GameMode::Result && !state.resultSuccess, "입력 없음: 체력 0에서 실패 결과로 전환");
-    Check(drops == cfg::START_HP && singleStep, "입력 없음: 균열마다 피해가 정확히 1씩 적용");
+    Check(drops == cfg::START_HP && singleStep, "입력 없음: 피해가 한 번에 정확히 1씩, 모두 체력만큼 적용");
 }
 
 void TestJump()
@@ -136,6 +142,18 @@ void TestJump()
     Check(FindAnimal(miss, miss.player.mountedAnimalId) != nullptr && miss.player.invincibleLeft > 0.0f,
           "점프 실패 후: 체크포인트에서 탑승 상태로 복귀(무적 시간 적용)");
 
+    // 뒤에 멈춰 있는 동물: 뛰는 동안 원숭이는 앞으로 실려 가므로 닿지 못한다.
+    GameState behind = NewGame();
+    Animal stopped = behind.animals[1];
+    stopped.id = 99;
+    stopped.segment = 99; // 계속 멈춰 있게 한다.
+    stopped.position = behind.animals[0].position + glm::vec3(1.0f, 0.0f, -5.0f);
+    behind.animals.push_back(stopped);
+    Check(StartJump(behind, 99), "점프: 뒤쪽 동물도 사거리 안이면 점프는 시작됨");
+    Run(behind, 1.0f, false, [](const GameState &s) { return !s.player.isJumping; });
+    Check(behind.player.hp == cfg::START_HP - 1 && behind.player.hurtCause == HurtCause::MissedJump,
+          "점프: 뒤에 멈춘 먼 동물에는 닿지 못해 착지 실패");
+
     GameState distant = NewGame();
     int farthest = distant.animals.back().id;
     Check(!StartJump(distant, farthest), "점프: 사거리 밖 동물로는 점프할 수 없음");
@@ -143,8 +161,9 @@ void TestJump()
 
 void TestAbilityMisuse()
 {
-    // 들소로 균열에 돌진(오사용): 피해 1회.
+    // 들소로 균열에 돌진(오사용): 피해 1회. 통나무는 이 시험과 무관하므로 치운다.
     GameState state = NewGame();
+    state.hazards.clear();
     Run(state, 30.0f, false, [](const GameState &s) { return s.player.position.z > 21.0f; });
     Check(UseAbility(state), "능력: 준비 상태에서 발동");
     Check(!UseAbility(state), "능력: 쿨다운 중에는 발동하지 않음");
@@ -160,6 +179,7 @@ void TestAbilityMisuse()
     Check(rock.player.checkpoint == 1 && rock.player.hp == cfg::START_HP, "가젤 도약: 균열을 넘어 체크포인트 1 도달");
     const Animal *mount = FindAnimal(rock, rock.player.mountedAnimalId);
     Check(mount && mount->type == AnimalType::Gazelle, "균열 통과 후 가젤에 탑승 중");
+    rock.hazards.clear();
     Run(rock, 30.0f, false, [](const GameState &s) { return s.player.position.z > 41.0f; });
     rock.player.abilityCooldownLeft = 0.0f;
     UseAbility(rock);
@@ -169,6 +189,39 @@ void TestAbilityMisuse()
     Run(rock, 3.0f, false, [](const GameState &s) { return s.player.respawnTimer <= 0.0f; });
     Check(rock.player.checkpoint == 1 && rock.player.position.z > 26.0f && rock.player.position.z < 40.0f,
           "바위 충돌 후: 균열 뒤 체크포인트에서 복귀");
+}
+
+void TestHazards()
+{
+    // 조향하지 않으면 시작 차선의 통나무에 부딪힌다.
+    GameState hit = NewGame();
+    Run(hit, 20.0f, false, [](const GameState &s) { return s.player.hp < cfg::START_HP; });
+    Check(hit.player.hp == cfg::START_HP - 1 && hit.player.hurtCause == HurtCause::Log, "통나무: 피하지 않으면 체력 -1");
+
+    // 조향으로 피하면 무사하다(자동 플레이의 조향만 쓰고 점프·능력은 쓰지 않는다).
+    GameState dodge = NewGame();
+    for (float t = 0.0f; t < 6.0f; t += DT)
+    {
+        const Animal *mount = FindAnimal(dodge, dodge.player.mountedAnimalId);
+        dodge.player.steerInput = mount ? DodgeDirection(dodge, *mount, 8.0f) * cfg::STEER_RIGHT_SIGN : 0.0f;
+        StepSimulation(dodge, DT);
+    }
+    Check(dodge.player.hp == cfg::START_HP && dodge.player.position.z > 16.0f, "통나무: A/D 조향으로 피하면 피해 없음");
+
+    // 들소 돌진은 통나무를 부순다.
+    GameState charge = NewGame();
+    Run(charge, 20.0f, false, [](const GameState &s) { return s.player.position.z > 11.0f; });
+    UseAbility(charge);
+    Run(charge, 2.0f, false, [](const GameState &s) { return s.player.position.z > 16.0f; });
+    Check(charge.hazards[0].broken && charge.player.hp == cfg::START_HP, "통나무: 들소 돌진으로 부숨");
+
+    // 가젤 도약은 통나무를 뛰어넘는다.
+    GameState leap = NewGame();
+    leap.animals[0].type = AnimalType::Gazelle;
+    Run(leap, 20.0f, false, [](const GameState &s) { return s.player.position.z > 11.5f; });
+    UseAbility(leap);
+    Run(leap, 2.0f, false, [](const GameState &s) { return s.player.position.z > 16.0f; });
+    Check(!leap.hazards[0].broken && leap.player.hp == cfg::START_HP, "통나무: 가젤 도약으로 뛰어넘음");
 }
 
 void TestRestart()
@@ -216,6 +269,7 @@ int RunSelfTest()
     TestNoInputFails();
     TestJump();
     TestAbilityMisuse();
+    TestHazards();
     TestRestart();
     TestPicking();
     std::cout << (failures == 0 ? "SELFTEST OK" : "SELFTEST FAILED") << " (" << failures << " failed)\n";

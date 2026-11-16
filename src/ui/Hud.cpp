@@ -79,11 +79,11 @@ void DrawTitle(Renderer &renderer, const GameState &state)
     Label(renderer, "협곡 탈출", cx, h * 0.3f, h * 0.06f, WHITE, TextAlign::Center);
     Label(renderer, "산불을 피해 달리는 동물 떼의 등을 건너뛰어 협곡 출구까지 가자!", cx, h * 0.42f, h * 0.032f,
           {1.0f, 0.92f, 0.8f, 1.0f}, TextAlign::Center);
-    Label(renderer, "균열은 가젤의 도약으로, 바위는 들소의 돌진으로 돌파한다", cx, h * 0.475f, h * 0.032f, YELLOW,
+    Label(renderer, "균열은 가젤의 도약, 바위는 들소의 돌진으로 돌파하고 불붙은 통나무는 피한다", cx, h * 0.475f, h * 0.032f, YELLOW,
           TextAlign::Center);
     DrawButton(renderer, state, UiButton::Start, {0.2f, 0.65f, 0.3f}, "게임 시작 (Enter)");
     const char *controls[]{"마우스 이동: 조준    좌클릭: 조준한 동물로 점프", "A / D: 좌우 조향    Space: 탑승 동물의 능력",
-                           "R: 다시 시작    Q / Esc: 종료"};
+                           "P: 일시정지    R: 다시 시작    Q / Esc: 종료"};
     float y = h * 0.76f;
     for (const char *line : controls)
     {
@@ -97,6 +97,13 @@ void DrawPlayingHud(Renderer &renderer, const GameState &state)
     const PlayerState &player = state.player;
     float w = static_cast<float>(state.framebufferWidth), h = static_cast<float>(state.framebufferHeight);
     float size = h * 0.045f, gap = h * 0.01f, x0 = h * 0.03f, y0 = h * 0.03f, text = h * 0.03f;
+
+    // 피해를 받은 순간 화면 전체가 붉게 번쩍였다가 복귀할 때까지 옅어진다.
+    if (player.respawnTimer > 0.0f)
+    {
+        float strength = std::clamp(player.respawnTimer / cfg::RESPAWN_DELAY, 0.0f, 1.0f);
+        renderer.DrawRect(0, 0, w, h, {0.9f, 0.05f, 0.05f, 0.45f * strength});
+    }
 
     // 왼쪽 위: 체력(남은 칸은 빨강, 잃은 칸은 회색), 탑승 동물, 능력 게이지.
     float labelWidth = Label(renderer, "체력", x0, y0 + (size - text * 1.3f) * 0.5f, text, WHITE) + gap;
@@ -158,7 +165,7 @@ void DrawPlayingHud(Renderer &renderer, const GameState &state)
         float alpha = std::clamp(state.noticeLeft / 0.4f, 0.0f, 1.0f);
         Label(renderer, state.notice, w * 0.5f, h * 0.2f, h * 0.06f, {1.0f, 0.95f, 0.6f, alpha}, TextAlign::Center);
     }
-    Label(renderer, "좌클릭: 점프   A/D: 조향   Space: 능력   R: 다시 시작", w * 0.5f, h * 0.94f, h * 0.026f,
+    Label(renderer, "좌클릭: 점프   A/D: 조향(통나무 피하기)   Space: 능력   P: 일시정지   R: 다시 시작", w * 0.5f, h * 0.94f, h * 0.026f,
           {1.0f, 1.0f, 1.0f, 0.8f}, TextAlign::Center);
 
     // 조준 표시: 마우스 위치의 반투명 십자. 조준한 동물이 있으면 노란색.
@@ -169,6 +176,13 @@ void DrawPlayingHud(Renderer &renderer, const GameState &state)
     if (state.hoveredAnimalId >= 0 && !player.isJumping)
     {
         Label(renderer, "클릭: 점프", state.mouseX + m * 0.6f, state.mouseY - text * 1.5f, text * 0.9f, YELLOW);
+    }
+
+    if (state.paused)
+    {
+        renderer.DrawRect(0, 0, w, h, {0.0f, 0.0f, 0.0f, 0.55f});
+        Label(renderer, "일시정지", w * 0.5f, h * 0.36f, h * 0.11f, WHITE, TextAlign::Center);
+        Label(renderer, "P: 계속하기    R: 다시 시작    Esc: 종료", w * 0.5f, h * 0.52f, h * 0.035f, YELLOW, TextAlign::Center);
     }
 }
 
@@ -182,7 +196,12 @@ void DrawResult(Renderer &renderer, const GameState &state)
     std::string detail = state.resultSuccess
                              ? "기록 " + OneDecimal(state.time) + "초    남은 체력 " + std::to_string(state.player.hp)
                              : "체력이 모두 떨어졌다. 장애물에 맞는 동물로 갈아타자!";
-    Label(renderer, detail, w * 0.5f, h * 0.43f, h * 0.04f, WHITE, TextAlign::Center);
+    Label(renderer, detail, w * 0.5f, h * 0.41f, h * 0.04f, WHITE, TextAlign::Center);
+    if (state.bestTime > 0.0f)
+    {
+        std::string best = std::string(state.newRecord ? "신기록!  최고 기록 " : "최고 기록 ") + OneDecimal(state.bestTime) + "초";
+        Label(renderer, best, w * 0.5f, h * 0.49f, h * 0.035f, state.newRecord ? YELLOW : WHITE, TextAlign::Center);
+    }
     DrawButton(renderer, state, UiButton::Restart, {0.2f, 0.55f, 0.85f}, "다시 시작 (R)");
     DrawButton(renderer, state, UiButton::Quit, {0.6f, 0.2f, 0.2f}, "종료 (Q)");
 }

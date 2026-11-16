@@ -15,7 +15,8 @@ class Camera
 public:
     void Reset(const glm::vec3 &target);
     void Follow(const glm::vec3 &target, float dt); // 지수 보간으로 부드럽게 추적.
-    glm::vec3 Eye() const { return target + offset; }
+    void SetShake(const glm::vec3 &offsetNow) { shake = offsetNow; } // 화면 흔들림(매 프레임 지정, 0이면 없음).
+    glm::vec3 Eye() const { return target + offset + shake; }
     glm::mat4 View() const;
     glm::mat4 Projection(int framebufferWidth, int framebufferHeight) const;
     // 프레임버퍼 픽셀(좌상단 원점) → 월드 레이. 창 크기가 바뀌어도 해당 프레임버퍼 크기를 그대로 사용한다.
@@ -23,6 +24,7 @@ public:
 
 private:
     glm::vec3 target{0};
+    glm::vec3 shake{0};
     glm::vec3 offset{4.0f, 8.0f, -9.0f}; // 진행 방향(+Z) 뒤쪽·위쪽·옆.
     glm::vec3 lookAhead{0.0f, 0.0f, 3.0f}; // 시선은 진행 방향 앞쪽을 향한다.
 };

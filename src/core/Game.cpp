@@ -1,9 +1,9 @@
 #include "core/Game.h"
+#include "audio/Sound.h"
 #include "logic/AutoPlay.h"
 #include "logic/Picking.h"
 #include "logic/Simulation.h"
 #include "logic/Stage.h"
-#include "model/Models.h"
 #include "ui/Hud.h"
 
 namespace
@@ -11,6 +11,22 @@ namespace
 // 바닥·절벽을 그리는 z 범위. 불 위치 계산도 같은 범위를 쓴다.
 const float WORLD_Z_START = -30.0f;
 const float WORLD_Z_END = cfg::STAGE_LENGTH + 40.0f;
+const float SHAKE_TIME = 0.4f;
+const char *BEST_RECORD_FILE = "best_record.txt"; // 실행 파일 옆에 저장한다.
+
+int BrokenRocks(const GameState &state)
+{
+    int count = 0;
+    for (const Obstacle &obstacle : state.obstacles) { count += obstacle.consumed ? 1 : 0; }
+    return count;
+}
+
+int BrokenLogs(const GameState &state)
+{
+    int count = 0;
+    for (const Hazard &hazard : state.hazards) { count += hazard.broken ? 1 : 0; }
+    return count;
+}
 } // namespace
 
 bool Game::Init(GLFWwindow *w)
@@ -22,12 +38,22 @@ bool Game::Init(GLFWwindow *w)
     BuildStage(state); // 타이틀 뒤에 보일 장면을 미리 구성.
     camera.Reset(CameraTarget());
     state.mode = GameMode::Title;
+
+    std::ifstream file(ExecutableFolder() / BEST_RECORD_FILE);
+    float best = 0.0f;
+    if (file >> best && best > 0.0f) { state.bestTime = best; }
     return true;
 }
 
 void Game::Shutdown()
 {
     renderer.Shutdown();
+}
+
+void Game::SetAutoPlay(bool enabled)
+{
+    autoPlay = enabled;
+    SetSoundMuted(enabled);
 }
 
 void Game::Frame(float dt)
@@ -39,8 +65,12 @@ void Game::Frame(float dt)
         if (state.mode == GameMode::Title && elapsed > 1.0f) { StartGame(); }
         AutoPlayStep(state);
     }
-    if (state.mode == GameMode::Playing) { UpdatePlaying(dt); }
-    UpdateEffects(dt);
+    if (state.mode == GameMode::Playing && !state.paused) { UpdatePlaying(dt); }
+    if (!state.paused)
+    {
+        UpdateEffects(dt);
+        UpdateShake(dt);
+    }
     Draw();
     UpdateWindowTitle();
 }
@@ -57,8 +87,14 @@ void Game::OnKey(int key, int action)
         if (key == GLFW_KEY_Q) { glfwSetWindowShouldClose(window, GLFW_TRUE); }
         break;
     case GameMode::Playing:
-        if (key == GLFW_KEY_SPACE) { UseAbility(state); }
+        if (key == GLFW_KEY_P)
+        {
+            state.paused = !state.paused;
+            PlaySfx(Sfx::Pause);
+        }
         if (key == GLFW_KEY_R) { StartGame(); }
+        if (state.paused) { break; } // 멈춘 동안에는 조작을 받지 않는다.
+        if (key == GLFW_KEY_SPACE) { UseAbility(state); }
         if (key == GLFW_KEY_K) { ApplyHurt(state, HurtCause::MissedJump); } // 디버그: 피해·복귀·실패 전환 확인.
         break;
     case GameMode::Result:
@@ -73,7 +109,7 @@ void Game::OnMouseButton(int button, int action)
     if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) { return; }
     if (state.mode == GameMode::Playing)
     {
-        StartJump(state, state.hoveredAnimalId); // 조준한 동물이 없으면 아무 일도 일어나지 않는다.
+        if (!state.paused) { StartJump(state, state.hoveredAnimalId); } // 조준한 동물이 없으면 아무 일도 없다.
         return;
     }
     UiButton hit = HitButton(state.mode, state.mouseX, state.mouseY, state.framebufferWidth, state.framebufferHeight);
@@ -110,6 +146,10 @@ void Game::StartGame()
     BuildStage(state);
     camera.Reset(CameraTarget());
     state.mode = GameMode::Playing;
+    state.paused = false;
+    state.newRecord = false;
+    shakeLeft = 0.0f;
+    PlaySfx(Sfx::Start);
 }
 
 glm::vec3 Game::CameraTarget() const
@@ -123,57 +163,118 @@ glm::vec3 Game::CameraTarget() const
 
 void Game::UpdatePlaying(float dt)
 {
-    // 규칙을 한 단계 진행하고, 그 사이에 일어난 일(착지·도약 끝·바위 파괴)에 먼지를 터뜨린다.
-    const int mountedBefore = state.player.mountedAnimalId;
-    const bool abilityBefore = state.player.abilityActive;
-    int brokenBefore = 0, brokenAfter = 0;
-    for (const Obstacle &obstacle : state.obstacles) { brokenBefore += obstacle.consumed ? 1 : 0; }
+    // 규칙을 한 단계 진행하고, 그 사이에 바뀐 것(점프·착지·능력·파괴·피해·결과)에 효과와 소리를 붙인다.
+    const PlayerState before = state.player;
+    const int rocksBefore = BrokenRocks(state), logsBefore = BrokenLogs(state);
 
     StepSimulation(state, dt);
 
-    const Animal *mount = FindAnimal(state, state.player.mountedAnimalId);
-    if (mount && mountedBefore < 0) { effects.BurstDust(mount->position, 14, 0.8f); } // 점프 착지.
-    if (mount && abilityBefore && !state.player.abilityActive && mount->type == AnimalType::Gazelle)
+    const PlayerState &player = state.player;
+    const Animal *mount = FindAnimal(state, player.mountedAnimalId);
+    Sfx sound = Sfx::Count; // 한 프레임에 여러 일이 겹치면 뒤에 검사한 것(더 중요한 것)이 이긴다.
+
+    if (player.isJumping && !before.isJumping) { sound = Sfx::Jump; }
+    if (mount && before.mountedAnimalId < 0 && before.isJumping)
     {
-        effects.BurstDust(mount->position, 18, 1.0f); // 가젤 도약 착지.
+        effects.BurstDust(mount->position, 10, 0.8f); // 점프 착지.
+        sound = Sfx::Land;
     }
-    for (const Obstacle &obstacle : state.obstacles) { brokenAfter += obstacle.consumed ? 1 : 0; }
-    if (brokenAfter > brokenBefore && mount)
+    if (player.abilityActive && !before.abilityActive && mount)
     {
-        effects.BurstDust(mount->position + glm::vec3(0.0f, 0.0f, 1.5f), 70, 1.8f); // 바위 파괴.
+        sound = mount->type == AnimalType::Gazelle ? Sfx::Leap : Sfx::Charge;
     }
+    if (mount && before.abilityActive && !player.abilityActive && mount->type == AnimalType::Gazelle)
+    {
+        effects.BurstDust(mount->position, 12, 1.0f); // 가젤 도약 착지.
+    }
+    if (BrokenLogs(state) > logsBefore && mount)
+    {
+        effects.BurstDust(mount->position + glm::vec3(0.0f, 0.0f, 1.0f), 24, 1.2f); // 통나무 파괴.
+        sound = Sfx::LogBreak;
+        shakeLeft = SHAKE_TIME * 0.6f;
+        shakePower = 0.12f;
+    }
+    if (BrokenRocks(state) > rocksBefore && mount)
+    {
+        effects.BurstDust(mount->position + glm::vec3(0.0f, 0.0f, 1.5f), 45, 1.8f); // 바위 파괴.
+        sound = Sfx::RockBreak;
+        shakeLeft = SHAKE_TIME;
+        shakePower = 0.25f;
+    }
+    if (player.hp < before.hp)
+    {
+        sound = Sfx::Hurt;
+        shakeLeft = SHAKE_TIME;
+        shakePower = 0.3f;
+    }
+    if (state.mode == GameMode::Result)
+    {
+        sound = state.resultSuccess ? Sfx::Clear : Sfx::Fail;
+        if (state.resultSuccess) { FinishRecord(); }
+    }
+    PlaySfx(sound);
 
     camera.Follow(CameraTarget(), dt);
 
     // 마우스 조준: 점프할 수 있을 때만 대상을 고른다.
     state.hoveredAnimalId = -1;
-    if (state.mode == GameMode::Playing && !state.player.isJumping && state.player.respawnTimer <= 0.0f)
+    if (state.mode == GameMode::Playing && !player.isJumping && player.respawnTimer <= 0.0f)
     {
         Ray ray = camera.ScreenRay(state.mouseX, state.mouseY, state.framebufferWidth, state.framebufferHeight);
         state.hoveredAnimalId = PickAnimal(state, ray);
     }
 }
 
+void Game::FinishRecord()
+{
+    state.newRecord = state.bestTime <= 0.0f || state.time < state.bestTime;
+    if (!state.newRecord) { return; }
+    state.bestTime = state.time;
+    if (autoPlay) { return; } // 자동 플레이 기록은 저장하지 않는다.
+    std::ofstream file(ExecutableFolder() / BEST_RECORD_FILE);
+    file << state.bestTime << '\n';
+}
+
+void Game::UpdateShake(float dt)
+{
+    shakeLeft = std::max(0.0f, shakeLeft - dt);
+    if (shakeLeft <= 0.0f)
+    {
+        camera.SetShake(glm::vec3(0.0f));
+        return;
+    }
+    // 서로 다른 빠르기의 사인파를 섞어 불규칙하게 흔들고, 남은 시간에 비례해 잦아들게 한다.
+    float amount = shakePower * shakeLeft / SHAKE_TIME;
+    camera.SetShake(glm::vec3(std::sin(elapsed * 71.0f), std::sin(elapsed * 97.0f + 1.3f), std::sin(elapsed * 83.0f + 2.1f)) * amount);
+}
+
 void Game::UpdateEffects(float dt)
 {
-    // 산불: 화면에 들어올 만한 범위의 나무에서만 불꽃·연기를 낸다. 타이틀·결과 화면에서도 계속 탄다.
+    // 산불: 화면에 들어올 만한 범위의 나무와 통나무에서만 불꽃·연기를 낸다. 타이틀·결과 화면에서도 계속 탄다.
     glm::vec3 focus = CameraTarget();
+    auto visible = [&focus](float z) { return z > focus.z - 14.0f && z < focus.z + 48.0f; };
     for (const FireSpot &spot : fireSpots)
     {
-        if (spot.position.z < focus.z - 14.0f || spot.position.z > focus.z + 48.0f) { continue; }
-        effects.EmitFire(spot.position, spot.scale, dt);
+        if (visible(spot.position.z)) { effects.EmitFire(spot.position, spot.scale, dt); }
+    }
+    for (const Hazard &hazard : state.hazards)
+    {
+        if (hazard.broken || !visible(hazard.position.z)) { continue; }
+        for (float offset : {-0.6f, 0.6f}) // 통나무 양쪽에서 탄다.
+        {
+            effects.EmitFire(hazard.position + glm::vec3(offset * hazard.halfSize.x, hazard.halfSize.y * 2.0f, 0.0f), 0.55f, dt);
+        }
     }
     effects.EmitEmbers(focus, dt);
 
-    // 흙먼지: 땅을 딛고 달리는 동물의 뒷발 쪽에서 피어오른다. 능력으로 빨라진 동물은 더 많이.
+    // 흙먼지: 땅을 딛고 달리는 동물의 뒷발 쪽에서 흙 조각이 튄다. 능력으로 빨라진 동물은 더 많이.
     if (state.mode == GameMode::Playing)
     {
         for (const Animal &animal : state.animals)
         {
-            if (animal.waiting || std::abs(animal.yOffset) > 0.05f) { continue; }
-            if (animal.position.z < focus.z - 14.0f || animal.position.z > focus.z + 48.0f) { continue; }
+            if (animal.waiting || std::abs(animal.yOffset) > 0.05f || !visible(animal.position.z)) { continue; }
             bool boosted = state.player.abilityActive && animal.id == state.player.mountedAnimalId;
-            float rate = (animal.type == AnimalType::Bison ? 22.0f : 14.0f) * (boosted ? 4.0f : 1.0f);
+            float rate = (animal.type == AnimalType::Bison ? 12.0f : 8.0f) * (boosted ? 3.5f : 1.0f);
             effects.EmitDust(animal.position - glm::vec3(0.0f, 0.0f, animal.halfSize.z * 0.8f), rate, dt);
         }
     }
@@ -190,8 +291,7 @@ void Game::Draw()
 
     // 바닥: 균열 자리를 비우고 조각으로 나눠 그린다. 절벽 안쪽 면이 들쭉날쭉하므로 조금 넓게 깐다.
     const float floorHalfWidth = cfg::CANYON_HALF_WIDTH + 0.7f;
-    const float zStart = WORLD_Z_START, zEnd = WORLD_Z_END;
-    float z = zStart;
+    float z = WORLD_Z_START;
     for (const Obstacle &obstacle : state.obstacles)
     {
         if (obstacle.type != ObstacleType::Crack) { continue; }
@@ -199,13 +299,17 @@ void Game::Draw()
         DrawCrackPit(renderer, obstacle, floorHalfWidth);
         z = obstacle.position.z + obstacle.halfSize.z;
     }
-    renderer.DrawFloor(floorHalfWidth, z, zEnd, cfg::FLOOR_TILE_METERS);
+    renderer.DrawFloor(floorHalfWidth, z, WORLD_Z_END, cfg::FLOOR_TILE_METERS);
 
-    DrawCanyonWalls(renderer, cfg::CANYON_HALF_WIDTH, zStart, zEnd);
+    DrawCanyonWalls(renderer, cfg::CANYON_HALF_WIDTH, WORLD_Z_START, WORLD_Z_END);
     DrawExitMarker(renderer, cfg::STAGE_LENGTH, cfg::CANYON_HALF_WIDTH);
     for (const Obstacle &obstacle : state.obstacles)
     {
         if (obstacle.type == ObstacleType::Rock) { DrawRockWall(renderer, obstacle, state.time); }
+    }
+    for (const Hazard &hazard : state.hazards)
+    {
+        if (!hazard.broken) { DrawBurningLog(renderer, hazard, elapsed); }
     }
     for (const Animal &animal : state.animals)
     {
@@ -218,8 +322,7 @@ void Game::Draw()
     {
         DrawMonkey(renderer, player.position, elapsed, player.isJumping);
     }
-
-    effects.Draw(renderer); // 반투명 입자는 불투명한 물체를 모두 그린 뒤에.
+    effects.Draw(renderer); // 불꽃·연기·먼지 블록.
 
     renderer.BeginUi(state.framebufferWidth, state.framebufferHeight);
     if (state.mode == GameMode::Title) { DrawTitle(renderer, state); }
@@ -232,6 +335,7 @@ void Game::UpdateWindowTitle()
 {
     std::string title = "STAMPEDE";
     if (state.mode == GameMode::Playing) { title += " | HP " + std::to_string(state.player.hp); }
+    if (state.mode == GameMode::Playing && state.paused) { title += " | PAUSED"; }
     if (state.mode == GameMode::Result) { title += state.resultSuccess ? " | CLEAR" : " | FAILED"; }
     if (title != lastTitle)
     {

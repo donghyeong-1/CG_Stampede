@@ -27,12 +27,6 @@ public:
     // 월드 좌표 기준으로 UV를 잡아 조각이 나뉘어도(균열) 무늬가 이어진다.
     void DrawFloor(float halfWidth, float zStart, float zEnd, float tileMeters);
 
-    // ── 입자(빌보드) ──  불투명한 물체를 모두 그린 뒤에 호출한다.
-    // additive=true면 색을 더해 빛나게(불꽃), false면 반투명으로 덮는다(연기·먼지).
-    void BeginParticles(bool additive);
-    void DrawParticle(const glm::vec3 &center, float size, const glm::vec4 &rgba);
-    void EndParticles();
-
     // ── UI(2D) ──  좌표는 프레임버퍼 픽셀, 좌상단 원점.
     void BeginUi(int framebufferWidth, int framebufferHeight);
     void DrawRect(float x, float y, float width, float height, const glm::vec4 &rgba);
@@ -42,9 +36,7 @@ public:
     void EndUi();
 
 private:
-    Shader phong, ui, particle;
-    glm::mat4 sceneViewProj{1.0f};
-    glm::vec3 cameraRight{1, 0, 0}, cameraUp{0, 1, 0};
+    Shader phong, ui;
     Mesh cube, floorPlane, quad;
     GLuint floorTexture = 0;
     TextCache textCache;

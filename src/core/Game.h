@@ -1,7 +1,7 @@
 // [공통] 게임 진행: 입력 → 갱신 → 그리기와 상태 전환(Title/Playing/Result).
 // 실습 틀의 main 루프(PollEvents → dt → InputProcess → Update → Draw)를 클래스로 옮긴 것이다.
 // 상태 전환 규칙: 마우스 좌클릭은 Title/Result에서는 버튼, Playing에서는 점프로 해석한다.
-// 규칙 자체(점프·능력·충돌)는 logic/Simulation에 있고, 여기서는 입력과 화면만 연결한다.
+// 규칙 자체(점프·능력·충돌)는 logic/Simulation에 있고, 여기서는 입력·화면·효과·소리를 연결한다.
 #pragma once
 #include "core/GameState.h"
 #include "fx/Particles.h"
@@ -22,8 +22,8 @@ public:
     void OnCursorPos(double x, double y);
     void OnFramebufferResize(int width, int height);
 
-    // 검증용(--autoplay): 스스로 시작하고 플레이한다.
-    void SetAutoPlay(bool enabled) { autoPlay = enabled; }
+    // 검증용(--autoplay): 스스로 시작하고 플레이한다. 소리를 끄고 최고 기록을 저장하지 않는다.
+    void SetAutoPlay(bool enabled);
     // 지금 그려진 화면(백 버퍼)을 24비트 BMP로 저장한다. 버퍼를 교체하기 전에 호출한다.
     bool SaveScreenshot(const std::string &path) const;
 
@@ -31,7 +31,9 @@ private:
     void StartGame();       // 모든 상태를 초기화하고 Playing으로 전환(재시작 포함).
     void PollInput();       // A/D 조향처럼 누르고 있는 키.
     void UpdatePlaying(float dt);
-    void UpdateEffects(float dt); // 불꽃·연기·불티·흙먼지 입자.
+    void UpdateEffects(float dt); // 불꽃·연기·불티·흙먼지 블록.
+    void UpdateShake(float dt);   // 피해·파괴 때의 화면 흔들림.
+    void FinishRecord();          // 성공 시 최고 기록 갱신·저장.
     glm::vec3 CameraTarget() const;
     void Draw();
     void UpdateWindowTitle();
@@ -44,5 +46,7 @@ private:
     std::vector<FireSpot> fireSpots;
     std::string lastTitle;
     bool autoPlay = false;
-    float elapsed = 0.0f; // 실행 후 지난 시간(초).
+    float elapsed = 0.0f;     // 실행 후 지난 시간(초).
+    float shakeLeft = 0.0f;   // 남은 흔들림 시간.
+    float shakePower = 0.0f;  // 흔들림 세기(m).
 };

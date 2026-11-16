@@ -56,6 +56,14 @@ void UpdateNpc(GameState &state, Animal &animal, float dt)
     animal.waiting = moved < 1.0e-5f;
     AdvanceLegs(animal, moved);
 
+    // 앞에 통나무가 있으면 옆으로 비켜 달린다.
+    float dodge = DodgeDirection(state, animal, cfg::NPC_DODGE_LOOKAHEAD);
+    if (dodge != 0.0f && !animal.waiting)
+    {
+        float limit = cfg::CANYON_HALF_WIDTH - animal.halfSize.x;
+        animal.position.x = std::clamp(animal.position.x + dodge * cfg::NPC_DODGE_SPEED * dt, -limit, limit);
+    }
+
     // 가젤은 균열 위를 포물선으로 뛰어넘는다(플레이어에게 가젤의 능력을 보여 주는 역할도 한다).
     animal.yOffset = 0.0f;
     if (animal.type == AnimalType::Gazelle)
@@ -106,10 +114,12 @@ void UpdateJump(GameState &state, float dt)
     if (s < 1.0f) { return; }
 
     // 착지 판정: 착지 순간 대상의 실제 위치로 판단한다. 대상이 사라졌거나, 추락 중이거나,
-    // 점프 시작점에서 너무 멀어졌으면 실패.
+    // 닿을 수 있는 거리 밖이면 실패. 원숭이는 타고 있던 동물의 속도만큼 앞으로 실려 가므로,
+    // 그만큼 옮긴 지점에서 거리를 잰다(앞서 달리는 동물은 닿기 쉽고, 뒤에 멈춘 동물은 멀어진다).
     player.isJumping = false;
+    glm::vec3 carried = player.jumpStart + glm::vec3(0.0f, 0.0f, player.jumpCarry * cfg::JUMP_TIME);
     bool landed = target && target->yOffset > -0.5f &&
-                  HorizontalDistance(player.jumpStart, target->position) <= cfg::JUMP_RANGE * cfg::JUMP_LAND_SLACK;
+                  HorizontalDistance(carried, target->position) <= cfg::JUMP_RANGE * cfg::JUMP_LAND_SLACK;
     if (!landed)
     {
         ApplyHurt(state, HurtCause::MissedJump);
@@ -157,6 +167,29 @@ void CheckObstacles(GameState &state, Animal &mount)
     }
 }
 
+void CheckHazards(GameState &state, Animal &mount)
+{
+    for (Hazard &hazard : state.hazards)
+    {
+        if (hazard.broken) { continue; }
+        if (std::abs(mount.position.x - hazard.position.x) >= hazard.halfSize.x + mount.halfSize.x) { continue; }
+        if (mount.position.z + mount.halfSize.z < hazard.position.z - hazard.halfSize.z ||
+            mount.position.z - mount.halfSize.z > hazard.position.z + hazard.halfSize.z)
+        {
+            continue;
+        }
+        if (mount.yOffset > cfg::LOG_CLEAR_HEIGHT) { continue; } // 가젤 도약으로 뛰어넘는 중.
+        if (state.player.abilityActive && mount.type == AnimalType::Bison)
+        {
+            hazard.broken = true; // 들소 돌진은 통나무도 부순다.
+            Notify(state, "통나무 돌파!", 0.8f);
+            continue;
+        }
+        ApplyHurt(state, HurtCause::Log);
+        return;
+    }
+}
+
 void UpdateCheckpoint(GameState &state, const Animal &mount)
 {
     PlayerState &player = state.player;
@@ -197,6 +230,25 @@ void UpdateHurt(GameState &state, float dt)
 }
 } // namespace
 
+float DodgeDirection(const GameState &state, const Animal &animal, float lookAhead)
+{
+    for (const Hazard &hazard : state.hazards)
+    {
+        if (hazard.broken) { continue; }
+        float ahead = hazard.position.z - animal.position.z;
+        if (ahead < -(hazard.halfSize.z + animal.halfSize.z) || ahead > lookAhead) { continue; }
+        float need = hazard.halfSize.x + animal.halfSize.x + 0.3f; // 이만큼 떨어져야 스치지 않는다.
+        float offset = animal.position.x - hazard.position.x;
+        if (std::abs(offset) >= need) { continue; }
+        // 가까운 쪽으로 비키되, 그쪽이 절벽에 막혀 있으면 반대쪽으로 간다.
+        float direction = offset >= 0.0f ? 1.0f : -1.0f;
+        float limit = cfg::CANYON_HALF_WIDTH - animal.halfSize.x;
+        if (std::abs(hazard.position.x + direction * need) > limit) { direction = -direction; }
+        return direction;
+    }
+    return 0.0f;
+}
+
 void ApplyHurt(GameState &state, HurtCause cause)
 {
     PlayerState &player = state.player;
@@ -212,6 +264,7 @@ void ApplyHurt(GameState &state, HurtCause cause)
     case HurtCause::MissedJump: Notify(state, "착지 실패!  체력 -1"); break;
     case HurtCause::Crack: Notify(state, "균열에 빠졌다!  체력 -1"); break;
     case HurtCause::Rock: Notify(state, "바위에 부딪혔다!  체력 -1"); break;
+    case HurtCause::Log: Notify(state, "불붙은 통나무에 부딪혔다!  체력 -1"); break;
     default: break;
     }
 }
@@ -229,6 +282,7 @@ bool StartJump(GameState &state, int targetAnimalId)
     player.jumpTargetId = target->id;
     player.jumpTime = 0.0f;
     player.jumpStart = player.position;
+    player.jumpCarry = mount->speed * (player.abilityActive ? cfg::ABILITY_SPEED_SCALE : 1.0f);
     player.jumpEnd = RiderPosition(*target);
     player.mountedAnimalId = -1;
     player.abilityActive = false; // 뛰어내리면 능력은 끊긴다.
@@ -288,6 +342,7 @@ void StepSimulation(GameState &state, float dt)
     {
         UpdateMounted(state, *mount, dt);
         CheckObstacles(state, *mount);
+        if (player.respawnTimer <= 0.0f) { CheckHazards(state, *mount); }
         if (player.respawnTimer <= 0.0f) { UpdateCheckpoint(state, *mount); }
     }
 

@@ -17,10 +17,10 @@ constexpr float STEER_RIGHT_SIGN = -1.0f;
 constexpr int START_HP = 3;
 
 // 점프: 조준한 동물까지 JUMP_TIME 동안 포물선 이동, 착지 순간 동물의 실제 위치로 판정한다.
-constexpr float JUMP_RANGE = 7.0f;
+constexpr float JUMP_RANGE = 5.5f;
 constexpr float JUMP_TIME = 0.6f;
 constexpr float JUMP_HEIGHT = 2.0f;
-constexpr float JUMP_LAND_SLACK = 1.3f; // 착지 순간 대상이 (사거리 × 이 값)보다 멀어졌으면 실패.
+constexpr float JUMP_LAND_SLACK = 1.15f; // 착지 순간 대상이 닿을 수 있는 거리(사거리 × 이 값) 밖이면 실패.
 
 // 능력: 가젤 도약(균열) / 들소 돌진(바위). 지속 시간 동안 빨라진다.
 constexpr float ABILITY_COOLDOWN = 3.0f;
@@ -31,6 +31,11 @@ constexpr float LEAP_HEIGHT = 1.6f; // 가젤 도약 최고 높이.
 // 탑승하지 않은 동물: 넘을 수 없는 장애물 앞 이 거리에서 멈춰 기다린다.
 constexpr float NPC_WAIT_GAP = 4.0f;
 constexpr float NPC_HOP_MARGIN = 1.5f; // 가젤이 균열 앞뒤 이 거리부터 뛰어오른다.
+
+// 불붙은 통나무: 협곡 폭의 일부만 막으므로 A/D 조향으로 피한다.
+constexpr float LOG_CLEAR_HEIGHT = 0.6f;  // 도약으로 이 높이 이상 떠 있으면 통나무를 넘는다.
+constexpr float NPC_DODGE_SPEED = 2.5f;   // 타지 않은 동물이 통나무를 피해 옆으로 움직이는 속도.
+constexpr float NPC_DODGE_LOOKAHEAD = 7.0f;
 
 // 피해와 복귀.
 constexpr float RESPAWN_DELAY = 0.9f;     // 피해 연출 후 체크포인트로 복귀하기까지.

@@ -14,7 +14,7 @@ void Camera::Follow(const glm::vec3 &t, float dt)
 
 glm::mat4 Camera::View() const
 {
-    return glm::lookAt(Eye(), target + lookAhead, glm::vec3(0, 1, 0));
+    return glm::lookAt(Eye(), target + lookAhead + shake, glm::vec3(0, 1, 0));
 }
 
 glm::mat4 Camera::Projection(int framebufferWidth, int framebufferHeight) const

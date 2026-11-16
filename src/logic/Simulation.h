@@ -12,5 +12,9 @@ bool StartJump(GameState &state, int targetAnimalId);
 // 탑승 동물의 능력(가젤 도약 / 들소 돌진)을 발동한다. 쿨다운 중이면 false.
 bool UseAbility(GameState &state);
 
+// 앞쪽 통나무를 피하려면 어느 쪽(x)으로 움직여야 하는가: +1, -1, 피할 필요가 없으면 0.
+// 타지 않은 동물의 회피와 자동 플레이 조향이 함께 쓴다.
+float DodgeDirection(const GameState &state, const Animal &animal, float lookAhead);
+
 // 피해 1회 적용. 무적·피해 연출 중에는 무시한다(같은 원인으로 중복 피해가 들어가지 않는다).
 void ApplyHurt(GameState &state, HurtCause cause);

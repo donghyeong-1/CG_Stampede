@@ -1,14 +1,16 @@
 #include "core/Platform.h"
 
-std::filesystem::path AssetPath(const char *name)
+std::filesystem::path ExecutableFolder()
 {
     wchar_t executable[32768]{};
     DWORD length = GetModuleFileNameW(nullptr, executable, 32768);
-    std::filesystem::path executableFolder;
-    if (length > 0 && length < 32768)
-    {
-        executableFolder = std::filesystem::path(executable).parent_path();
-    }
+    if (length > 0 && length < 32768) { return std::filesystem::path(executable).parent_path(); }
+    return {};
+}
+
+std::filesystem::path AssetPath(const char *name)
+{
+    std::filesystem::path executableFolder = ExecutableFolder();
     const std::filesystem::path paths[]{executableFolder / name, std::filesystem::path(name)};
     for (const auto &path : paths)
     {

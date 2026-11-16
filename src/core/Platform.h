@@ -24,4 +24,5 @@
 // 실행 파일 폴더 → 현재 작업 폴더 순으로 리소스(셰이더·텍스처)를 찾는다.
 // 빌드 PC의 절대 경로에 의존하지 않으므로 다른 PC에서도 실행된다.
 std::filesystem::path AssetPath(const char *name);
+std::filesystem::path ExecutableFolder(); // 실행 파일이 있는 폴더(기록 파일 저장용).
 std::string ReadTextFile(const char *name);

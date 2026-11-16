@@ -269,3 +269,23 @@ std::vector<FireSpot> CanyonFireSpots(float halfWidth, float zStart, float zEnd)
     }
     return spots;
 }
+
+void DrawBurningLog(Renderer &renderer, const Hazard &hazard, float time)
+{
+    const glm::vec3 bark(0.2f, 0.12f, 0.08f), charred(0.08f, 0.06f, 0.05f);
+    glm::vec3 size = hazard.halfSize * 2.0f;
+    glm::mat4 base = glm::translate(IDENTITY, hazard.position);
+    renderer.DrawCube(base, {0, hazard.halfSize.y, 0}, size, bark);
+    for (float side : {-1.0f, 1.0f}) // 양 끝의 그을린 단면.
+    {
+        renderer.DrawCube(base, {side * (hazard.halfSize.x + 0.03f), hazard.halfSize.y, 0}, {0.06f, size.y * 0.8f, size.z * 0.8f}, charred);
+    }
+    // 갈라진 틈으로 보이는 숯불: 조각마다 다른 박자로 밝기와 크기가 일렁인다.
+    for (int i = 0; i < 5; ++i)
+    {
+        float flicker = 0.75f + 0.25f * std::sin(time * (7.0f + static_cast<float>(i) * 1.7f) + static_cast<float>(i));
+        float x = (static_cast<float>(i) - 2.0f) * hazard.halfSize.x * 0.4f;
+        renderer.DrawGlowCube(base, {x, size.y + 0.01f, (Hash(i + 500) - 0.5f) * size.z * 0.5f},
+                              {size.x * 0.14f * flicker, 0.06f, size.z * 0.35f}, glm::vec3(1.0f, 0.5f, 0.1f) * flicker);
+    }
+}

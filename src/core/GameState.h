@@ -7,7 +7,7 @@
 enum class GameMode { Title, Playing, Result };
 enum class AnimalType { Gazelle, Bison };
 enum class ObstacleType { Crack, Rock };
-enum class HurtCause { None, MissedJump, Crack, Rock };
+enum class HurtCause { None, MissedJump, Crack, Rock, Log };
 
 struct Animal
 {
@@ -31,6 +31,14 @@ struct Obstacle
     float breakTime = -1.0f; // 부서진 시각(GameState::time). 파편 연출용.
 };
 
+// 불붙은 통나무. 협곡 폭의 일부만 막아서 좌우 조향으로 피한다(장애물 번호·체크포인트와는 무관).
+struct Hazard
+{
+    glm::vec3 position{0};                // 바닥 위 중심(y=0).
+    glm::vec3 halfSize{1.2f, 0.35f, 0.35f};
+    bool broken = false;                  // 들소 돌진으로 부서졌다.
+};
+
 struct PlayerState
 {
     int hp = cfg::START_HP;
@@ -39,6 +47,7 @@ struct PlayerState
     int jumpTargetId = -1;
     float jumpTime = 0.0f;
     glm::vec3 jumpStart{0};
+    float jumpCarry = 0.0f;         // 뛰어내릴 때 타고 있던 동물의 속도. 원숭이는 이 속도로 앞으로 실려 간다.
     glm::vec3 jumpEnd{0};           // 대상의 최신 등 위치(대상이 사라지면 마지막 값 유지).
     float abilityCooldownLeft = 0.0f;
     bool abilityActive = false;
@@ -59,6 +68,7 @@ struct GameState
     PlayerState player;
     std::vector<Animal> animals;
     std::vector<Obstacle> obstacles; // z 오름차순.
+    std::vector<Hazard> hazards;
     int hoveredAnimalId = -1;       // 마우스로 조준한 동물(점프 대상 후보).
     float mouseX = 0.0f, mouseY = 0.0f; // 프레임버퍼 픽셀, 좌상단 원점.
     int framebufferWidth = cfg::WINDOW_WIDTH;
@@ -66,6 +76,9 @@ struct GameState
     float time = 0.0f;              // 진행 시간(초).
     std::string notice;             // HUD 중앙에 잠깐 띄우는 안내 문구(UTF-8).
     float noticeLeft = 0.0f;
+    bool paused = false;            // P 키 일시정지(Playing에서만).
+    float bestTime = 0.0f;          // 최고 기록(초). 0이면 기록 없음. 재시작해도 유지한다.
+    bool newRecord = false;         // 이번 판이 최고 기록을 갈아치웠다.
 };
 
 inline const Animal *FindAnimal(const GameState &state, int id)
